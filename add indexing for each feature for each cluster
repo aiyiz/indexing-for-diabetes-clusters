@@ -1,0 +1,228 @@
+------------------------------------------------------------------------------------
+------------------------------------------segment------------------------------------------
+------------------------------------------------------------------------------------
+
+-----------------------------------tabulating clusters--------------------------------------
+--device id, segment, cluster in long format
+create table ds.diabetes1203.diab_cluster_tab_seg as 
+select distinct a.device_id_hashed, a.cluster_id, b.segment_id
+from ds.diabetes1203.DIAB_TAB1217 a
+join DEVELOPMENT.PUBLIC._V3_DEVICE_SEGMENT_CLUSTERED b
+on a.device_id_hashed=b.device_id_hashed
+where a.device_id_hashed !='DEVICE_ID_HASHED';
+
+
+--group by segments and find percentages of each segment in each cluster  
+create table ds.diabetes1203.diab_cluster_tab_seg_percent as 
+select dat1.cluster_id, dat1.segment_id, dat1.segment_n, dat2.cluster_n, segment_n/cluster_n percent,
+dat3.category1, dat3.category2, dat3.category3, dat3.segment_name 
+from 
+    (select cluster_id, segment_id, count(distinct device_id_hashed) segment_n
+        from ds.diabetes1203.diab_cluster_tab_seg 
+            group by cluster_id, segment_id) dat1
+join 
+    (select cluster_id, count(distinct device_id_hashed) cluster_n
+        from ds.diabetes1203.diab_cluster_tab_seg 
+            group by cluster_id) dat2 
+    on dat1.cluster_id=dat2.cluster_id
+join 
+    front_end.aex._v3_taxonomies  dat3
+    on dat3.segment_id = dat1.segment_id 
+
+---------------------------------all devices -------------------------------------------
+--find number of devices in 2018 (whole universe)
+select count (distinct device_id_hashed) 
+from etl.public.transactions 
+where timestamp>='2018-01-01'
+--40,338,025
+
+--group all devices by segment id for all devices in past year 
+create table ds.diabetes1203.all_tab_seg_percent as 
+select  b.segment_id,count (distinct a.device_id_hashed) n_seg_all,
+count (distinct a.device_id_hashed)/40338025 percent_seg_all
+from etl.public.transactions a
+join DEVELOPMENT.PUBLIC._V3_DEVICE_SEGMENT_CLUSTERED b
+on a.device_id_hashed=b.device_id_hashed
+where timestamp>='2018-01-01'
+group by b.segment_id 
+
+------------------------------------all diabetes clicker devices----------------------------------------
+--number of devices that clicked on diabetes campaign ad data in 2018: 548,156
+select count(distinct c.device_id_hashed)
+from etl.public.transactions c
+where c.event_type in ('CLICK', 'EXPAND')
+      and c.campaign_id in (1196,5082,1192,1207,2216,3346,12018,2788,1793,1859,10350,1163,9520,3436,2971,5443,5276,4444,11086,4814,1457,2608,2756,2164,3340,2027,5707,5949,2224,4752,4341,3212,7051,1944,2963,3329,3439,4012,3420,4225,4128,4683,4099,4648,4220)
+      and c.timestamp>='2018-01-01'
+      and c.device_id_hashed not in (select device_id_hashed from development.hcp_lookup.hcps_past_year)
+; 
+
+---devices that clicked on diabetes campaigns in time period that are not HCPs 
+create table ds.diabetes1203.all_diab_tab_seg_percent as
+select d.segment_id, count (distinct c.device_id_hashed) n_seg_all, 
+count (distinct c.device_id_hashed)/548156 percent_seg_all
+from etl.public.transactions c
+    join development.public._v3_device_segment_clustered d
+        on c.device_id_hashed=d.device_id_hashed
+        and c.event_type in ('CLICK', 'EXPAND')
+        and c.campaign_id in (1196,5082,1192,1207,2216,3346,12018,2788,1793,1859,10350,1163,9520,3436,2971,5443,5276,4444,11086,4814,1457,2608,2756,2164,3340,2027,5707,5949,2224,4752,4341,3212,7051,1944,2963,3329,3439,4012,3420,4225,4128,4683,4099,4648,4220)
+        and c.timestamp>='2018-01-01' 
+        and c.device_id_hashed not in (select device_id_hashed from development.hcp_lookup.hcps_past_year)
+group by segment_id 
+;
+
+
+------------------------------------all diabetes viewer devices----------------------------------------
+--number of devices that clicked on diabetes campaign ad data in 2018: 11,166,569
+select count(distinct c.device_id_hashed)
+from etl.public.transactions c
+where c.campaign_id in (1196,5082,1192,1207,2216,3346,12018,2788,1793,1859,10350,1163,9520,3436,2971,5443,5276,4444,11086,4814,1457,2608,2756,2164,3340,2027,5707,5949,2224,4752,4341,3212,7051,1944,2963,3329,3439,4012,3420,4225,4128,4683,4099,4648,4220)
+      and c.timestamp>='2018-01-01'
+      and c.device_id_hashed not in (select device_id_hashed from development.hcp_lookup.hcps_past_year)
+; 
+
+---devices that clicked on diabetes campaigns in time period that are not HCPs 
+create table ds.diabetes1203.all_diab_viewer_tab_seg_percent as
+select d.segment_id, count (distinct c.device_id_hashed) n_seg_all, 
+count (distinct c.device_id_hashed)/11166569 percent_seg_all
+from etl.public.transactions c
+    join development.public._v3_device_segment_clustered d
+        on c.device_id_hashed=d.device_id_hashed
+        and c.campaign_id in (1196,5082,1192,1207,2216,3346,12018,2788,1793,1859,10350,1163,9520,3436,2971,5443,5276,4444,11086,4814,1457,2608,2756,2164,3340,2027,5707,5949,2224,4752,4341,3212,7051,1944,2963,3329,3439,4012,3420,4225,4128,4683,4099,4648,4220)
+        and c.timestamp>='2018-01-01' 
+        and c.device_id_hashed not in (select device_id_hashed from development.hcp_lookup.hcps_past_year)
+group by segment_id 
+
+------------------------------------compute index------------------------------------------------------------------------
+create table ds.diabetes1203.indexing_seg as 
+select b.cluster_id,cluster_n,b.category1, b.category2, b.category3, b.segment_name,
+b.percent/c.percent_seg_all indexing_on_diabetes_clickers, 
+b.percent/d.percent_seg_all indexing_on_diabetes_viewers, 
+b.percent/a.percent_seg_all indexing_on_all
+from ds.diabetes1203.all_tab_seg_percent a
+join ds.diabetes1203.diab_cluster_tab_seg_percent b
+    on a.segment_id=b.segment_id
+join ds.diabetes1203.all_diab_tab_seg_percent c
+    on c.segment_id=b.segment_id
+join ds.diabetes1203.all_diab_viewer_tab_seg_percent d 
+    on d.segment_id=b.segment_id
+order by cluster_id, b.segment_id
+
+
+------------------------------------------------------------------------------------
+------------------------------------------element one segment------------------------------------------
+------------------------------------------------------------------------------------
+--check if one cluster id is associated with several element one segment id 
+select count (distinct segment_id) n, cluster_id
+from ds.diabetes1203.diab_cluster_tab_seg 
+where segment_id>=96845 and segment_id<=97016
+group by cluster_id, segment_id
+order by cluster_id
+
+--each one cluster has one element one segment. so no need to add element one from cluster 
+
+------------------------------------------------------------------------------------
+--------------------------------------------location------------------------------------------
+------------------------------------------------------------------------------------
+
+---------------------------------------------diabetes cluster---------------------------------------------------------------
+--device id, segment, cluster in long format
+create table ds.diabetes1203.diab_cluster_tab_loc as 
+select distinct a.device_id_hashed, a.cluster_id, b.displayed_name
+from ds.diabetes1203.DIAB_TAB1217 a
+join ds.public.transaction_with_location_v3_minhav_unique b
+on a.device_id_hashed=b.device_id_hashed
+where a.device_id_hashed !='DEVICE_ID_HASHED';
+
+
+-- group by and find percentage 
+create table ds.diabetes1203.diab_cluster_tab_loc_percent as 
+select dat1.cluster_id, dat1.displayed_name, 
+dat1.segment_n, dat2.cluster_n, dat1.segment_n/dat2.cluster_n percent
+from 
+(select cluster_id,displayed_name, count(distinct device_id_hashed) segment_n
+    from ds.diabetes1203.diab_cluster_tab_loc
+        group by cluster_id, displayed_name) dat1
+join 
+(select cluster_id, count(distinct device_id_hashed) cluster_n
+    from ds.diabetes1203.diab_cluster_tab_loc 
+        group by cluster_id
+)dat2 
+on dat1.cluster_id=dat2.cluster_id
+
+-------------------------------------------all devices -----------------------------------------------------------------
+--group all devices by location display name for all devices in past year 
+create table ds.diabetes1203.all_tab_loc_percent as 
+select  b.displayed_name,count (distinct a.device_id_hashed) n_loc_all,
+count (distinct a.device_id_hashed)/40338025 percent_seg_all
+from etl.public.transactions a
+join DS.PUBLIC.TRANSACTION_WITH_LOCATION_V3_minhav_unique b
+    on a.device_id_hashed=b.device_id_hashed
+where a.timestamp>='2018-01-01' and b.timestamp>='2018-01-01'
+group by b.displayed_name 
+
+------------------------------------------all diabetes devices------------------------------------------------------------------
+create table ds.diabetes1203.all_diab_tab_loc_percent as
+select d.displayed_name, count (distinct c.device_id_hashed) n_loc_all, 
+count (distinct c.device_id_hashed)/548156 percent_seg_all
+from etl.public.transactions c
+    join DS.PUBLIC.TRANSACTION_WITH_LOCATION_V3_minhav_unique d
+        on c.device_id_hashed=d.device_id_hashed
+        and c.event_type in ('CLICK', 'EXPAND')
+        and c.campaign_id in (1196,5082,1192,1207,2216,3346,12018,2788,1793,1859,10350,1163,9520,3436,2971,5443,5276,4444,11086,4814,1457,2608,2756,2164,3340,2027,5707,5949,2224,4752,4341,3212,7051,1944,2963,3329,3439,4012,3420,4225,4128,4683,4099,4648,4220)
+        and c.timestamp>='2018-01-01' and d.timestamp>='2018-01-01'
+        and c.device_id_hashed not in (select device_id_hashed from development.hcp_lookup.hcps_past_year)
+group by displayed_name
+;
+
+------------------------------------------all diabetes viewer devices------------------------------------------------------------------
+create table ds.diabetes1203.all_diab_viewer_tab_loc_percent as
+select d.displayed_name, count (distinct c.device_id_hashed) n_loc_all, 
+count (distinct c.device_id_hashed)/11166569 percent_seg_all
+from etl.public.transactions c
+    join DS.PUBLIC.TRANSACTION_WITH_LOCATION_V3_minhav_unique d
+        on c.device_id_hashed=d.device_id_hashed
+        and c.campaign_id in (1196,5082,1192,1207,2216,3346,12018,2788,1793,1859,10350,1163,9520,3436,2971,5443,5276,4444,11086,4814,1457,2608,2756,2164,3340,2027,5707,5949,2224,4752,4341,3212,7051,1944,2963,3329,3439,4012,3420,4225,4128,4683,4099,4648,4220)
+        and c.timestamp>='2018-01-01' and d.timestamp>='2018-01-01'
+        and c.device_id_hashed not in (select device_id_hashed from development.hcp_lookup.hcps_past_year)
+group by displayed_name
+;
+
+------------------------------------------indexing------------------------------------------------------------------
+create table ds.diabetes1203.indexing_loc as
+select a.cluster_id, a.displayed_name, a.cluster_n, 
+a.percent/c.percent_seg_all indexing_on_diabetes_clickers,
+a.percent/d.percent_seg_all indexing_on_diabetes_viewers, 
+a.percent/b.percent_seg_all indexing_on_all
+from ds.diabetes1203.diab_cluster_tab_loc_percent a
+join ds.diabetes1203.all_tab_loc_percent b
+    on a.displayed_name=b.displayed_name
+join ds.diabetes1203.all_diab_tab_loc_percent c
+    on a.displayed_name=c.displayed_name 
+join ds.diabetes1203.all_diab_viewer_tab_loc_percent d
+    on a.displayed_name=d.displayed_name 
+
+------------------------------------------------------------------------------------------------------------------
+--------------------------------------------combine segment and location indexings ------------------------------------------
+------------------------------------------------------------------------------------------------------------------
+
+create table ds.diabetes1203.indexing_all clone ds.diabetes1203.indexing_seg; 
+
+insert into ds.diabetes1203.indexing_all 
+select cluster_id, cluster_n, 'LOCATION' category1, 'LOCATION' category2, 'LOCATION' category3, 
+displayed_name segment_name, indexing_on_diabetes_clickers, indexing_on_diabetes_viewers, indexing_on_all
+from ds.diabetes1203.indexing_loc;
+
+
+select 
+cluster_id, 
+category1, category2, category3, segment_name, 
+cluster_n cluster_size, 
+indexing_on_diabetes_clickers, 
+indexing_on_diabetes_viewers, indexing_on_all 
+from ds.diabetes1203.indexing_all 
+where cluster_size>=300
+order by cluster_size desc, 
+indexing_on_diabetes_clickers desc, 
+indexing_on_diabetes_viewers desc, 
+indexing_on_all desc 
+
